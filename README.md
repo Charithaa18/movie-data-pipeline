@@ -67,7 +67,7 @@ Place `movies.csv` and `ratings.csv` in the project directory.
 ### Install dependencies
 
 ```bash
-python -m pip install pandas requests
+python -m pip install -r requirements.txt
 ```
 
 ### Configure the OMDb API key
