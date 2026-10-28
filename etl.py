@@ -20,13 +20,16 @@ def extract_csv_data():
     return movies, ratings
 
 
+
 def fetch_movie_details(title, year=None):
     """Fetch additional details for one movie from OMDb."""
 
     api_key = os.getenv("OMDB_API_KEY")
 
     if not api_key:
-        raise RuntimeError("OMDB_API_KEY environment variable is not set.")
+        raise RuntimeError(
+            "OMDB_API_KEY is not set. Configure your API key before running ETL."
+        )
 
     params = {
         "apikey": api_key,
@@ -43,9 +46,17 @@ def fetch_movie_details(title, year=None):
             timeout=15
         )
         response.raise_for_status()
-        data = response.json()
 
-        
+        try:
+            data = response.json()
+        except ValueError as error:
+            raise RuntimeError(
+                "OMDb returned an invalid JSON response."
+            ) from error
+
+        if not isinstance(data, dict):
+            raise RuntimeError("OMDb returned an unexpected response format.")
+
         if data.get("Response") != "True":
             error_message = data.get("Error", "Unknown OMDb error")
 
@@ -53,8 +64,18 @@ def fetch_movie_details(title, year=None):
                 print(f"Movie not found: {title}")
                 return None
 
-            raise RuntimeError(f"OMDb API error: {error_message}")
+            if "invalid api key" in error_message.lower():
+                raise RuntimeError(
+                    "OMDb rejected the API key. Check OMDB_API_KEY."
+                )
 
+            if "limit" in error_message.lower() or "request" in error_message.lower():
+                raise RuntimeError(
+                    f"OMDb API error; check the API quota and key status: "
+                    f"{error_message}"
+                )
+
+            raise RuntimeError(f"OMDb API error: {error_message}")
 
         return {
             "director": data.get("Director"),
@@ -64,10 +85,10 @@ def fetch_movie_details(title, year=None):
             "box_office": data.get("BoxOffice")
         }
 
-    
     except requests.RequestException as error:
         print(f"API request failed for {title}: {error}")
         raise
+
 
 
 
@@ -265,6 +286,7 @@ import json
 
 
 
+
 def enrich_movies(connection, movies, batch_size=5):
     """Fetch and cache OMDb details for a small batch of movies."""
 
@@ -290,7 +312,7 @@ def enrich_movies(connection, movies, batch_size=5):
             details = fetch_movie_details(search_title, year)
 
         except RuntimeError as error:
-            # Invalid key, quota errors, or other API-level problems.
+            # API-level errors must stop the batch.
             connection.rollback()
             raise RuntimeError(
                 f"Stopping enrichment because of an OMDb API error for "
@@ -298,7 +320,7 @@ def enrich_movies(connection, movies, batch_size=5):
             ) from error
 
         except requests.RequestException as error:
-            # Network or HTTP request failure; leave it uncached for retry.
+            # Leave network failures uncached so they can be retried.
             print(f"Temporary network error for {title}: {error}")
             continue
 
