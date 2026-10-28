@@ -2,6 +2,7 @@ import os
 import time
 import requests
 import re
+import argparse
 
 import sqlite3
 import pandas as pd
@@ -287,14 +288,24 @@ def enrich_movies(connection, movies, batch_size=5):
 
         try:
             details = fetch_movie_details(search_title, year)
-        except (requests.RequestException, RuntimeError) as error:
-            print(f"API error for {title}: {error}")
-            # Do not cache temporary/API errors; retry on a later run.
+
+        except RuntimeError as error:
+            # Invalid key, quota errors, or other API-level problems.
+            connection.rollback()
+            raise RuntimeError(
+                f"Stopping enrichment because of an OMDb API error for "
+                f"{title}: {error}"
+            ) from error
+
+        except requests.RequestException as error:
+            # Network or HTTP request failure; leave it uncached for retry.
+            print(f"Temporary network error for {title}: {error}")
             continue
 
         if details is None:
             status = "not_found"
             response_json = None
+
         else:
             status = "success"
             response_json = json.dumps(details)
@@ -327,31 +338,41 @@ def enrich_movies(connection, movies, batch_size=5):
 
 
 
-
-
-
-
 if __name__ == "__main__":
-    movies, ratings = extract_csv_data()
+    parser = argparse.ArgumentParser(
+        description="Run the movie data ETL pipeline."
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=5,
+        help="Number of movies to enrich per run (default: 5)."
+    )
+    args = parser.parse_args()
 
+    if args.batch_size < 1:
+        parser.error("--batch-size must be at least 1")
+
+    movies, ratings = extract_csv_data()
     connection = sqlite3.connect("movies.db")
 
     try:
-        # Enable foreign-key constraints
         connection.execute("PRAGMA foreign_keys = ON")
 
-        # Step 1: Load all movies and their genres
         load_all_movies_without_api(connection, movies)
-
-        # Step 2: Load all ratings
         load_ratings(connection, ratings)
         connection.commit()
 
-        # Step 3: Enrich a small batch using OMDb
-        enrich_movies(connection, movies, batch_size=5)
-
+        enrich_movies(
+            connection,
+            movies,
+            batch_size=args.batch_size
+        )
     finally:
         connection.close()
+
+
+
 
 
 
