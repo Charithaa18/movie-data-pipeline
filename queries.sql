@@ -32,12 +32,31 @@ LIMIT 5;
 
 
 -- 3. Director with the most movies
+-- Split comma-separated director names and count each director separately.
+WITH RECURSIVE director_split(movie_id, director, remaining) AS (
+    SELECT
+        movie_id,
+        '',
+        director || ','
+    FROM movies
+    WHERE director IS NOT NULL
+      AND TRIM(director) != ''
+      AND director != 'N/A'
+
+    UNION ALL
+
+    SELECT
+        movie_id,
+        TRIM(SUBSTR(remaining, 1, INSTR(remaining, ',') - 1)),
+        SUBSTR(remaining, INSTR(remaining, ',') + 1)
+    FROM director_split
+    WHERE remaining != ''
+)
 SELECT
     director,
-    COUNT(*) AS total_movies
-FROM movies
-WHERE director IS NOT NULL
-  AND TRIM(director) != ''
+    COUNT(DISTINCT movie_id) AS total_movies
+FROM director_split
+WHERE director != ''
   AND director != 'N/A'
 GROUP BY director
 ORDER BY total_movies DESC, director ASC

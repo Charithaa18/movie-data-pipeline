@@ -3,7 +3,7 @@ import time
 import requests
 import re
 import argparse
-
+import json
 import sqlite3
 import pandas as pd
 
@@ -96,7 +96,7 @@ def fetch_movie_details(title, year=None):
 def extract_release_year(title):
     """Extract the release year from a MovieLens title."""
 
-    match = re.search(r"\((\d{4})\)\s*$", title)
+    match =re.search(r"\((\d{4})\)\s*$", title)
 
     if match:
         return int(match.group(1))
