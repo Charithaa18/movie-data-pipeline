@@ -1,5 +1,6 @@
 
--- 1. Movie with the highest average rating
+
+-- 1. Highest average-rated movie with at least 20 ratings
 SELECT
     m.movie_id,
     m.title,
@@ -9,8 +10,10 @@ FROM movies AS m
 JOIN ratings AS r
     ON m.movie_id = r.movie_id
 GROUP BY m.movie_id, m.title
-ORDER BY average_rating DESC, total_ratings DESC
+HAVING COUNT(r.rating) >= 20
+ORDER BY AVG(r.rating) DESC, total_ratings DESC
 LIMIT 1;
+
 
 
 -- 2. Top 5 genres with the highest average rating

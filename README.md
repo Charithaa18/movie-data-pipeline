@@ -14,6 +14,7 @@ The pipeline supports analytical SQL queries to explore movie ratings, genres, d
 - SQLite for relational data storage
 - SQL for data analysis
 - OMDb API for movie metadata enrichment
+- `unittest` for automated testing
 
 ## 3. Data Sources
 
@@ -24,9 +25,13 @@ The `ml-latest-small` dataset provides two input files:
 - `movies.csv`: Movie IDs, titles, and genres.
 - `ratings.csv`: User IDs, movie IDs, ratings, and timestamps.
 
+Download the dataset from [MovieLens](https://grouplens.org/datasets/movielens/latest/).
+
 ### OMDb API
 
 The OMDb API provides additional movie information, including director, plot, release year, IMDb ID, and box office earnings when available.
+
+OMDb metadata is optional and may be unavailable for some MovieLens titles.
 
 ## 4. Database Design
 
@@ -36,33 +41,29 @@ The database contains five tables:
 - **genres:** Stores unique genre names.
 - **movie_genres:** Maps movies to their genres using a many-to-many relationship.
 - **ratings:** Stores user ratings and timestamps.
-- **omdb_cache:** Tracks OMDb lookup results to avoid repeatedly requesting movies already processed.
+- **omdb_cache:** Tracks OMDb lookup outcomes to avoid repeating completed requests.
 
 Primary keys, foreign keys, unique constraints, and rating checks help maintain data integrity.
 
-SQLite was selected because it is lightweight, free, and suitable for this small dataset.
+SQLite was selected because it is lightweight, requires no separate database server, and is suitable for this dataset.
 
 ## 5. ETL Workflow
 
 1. **Extract:** Read `movies.csv` and `ratings.csv` using Pandas.
-2. **Transform:** Extract release years from movie titles, split pipe-separated genres, clean box office values, and combine movie data with API responses.
+2. **Transform:** Extract release years from movie titles, split pipe-separated genres, clean box office values, and prepare movie records.
 3. **Load:** Store movies, genres, genre relationships, and ratings in SQLite.
-4. **Enrich:** Fetch additional movie details from OMDb in small batches.
-5. **Cache:** Record successful and not-found lookup results so previously attempted movies can be skipped in subsequent runs.
+4. **Enrich:** Fetch additional movie details from OMDb in configurable batches.
+5. **Cache:** Record successful and not-found lookup results so completed lookups can be skipped in subsequent runs.
 
-The database loading logic uses conflict handling to make repeated executions safe against duplicate records.
+The loading logic uses conflict-handling SQL statements to avoid duplicate records when the pipeline is rerun.
 
 ## 6. Setup Instructions
 
 ### Prerequisites
 
-Install Python 3.11 or a compatible Python version.
+Install Python 3.11 or a compatible version.
 
-Download the MovieLens `ml-latest-small` dataset from:
-
-https://grouplens.org/datasets/movielens/latest/
-
-Place `movies.csv` and `ratings.csv` in the project directory.
+Download the MovieLens `ml-latest-small` dataset and place `movies.csv` and `ratings.csv` in the project directory.
 
 ### Install dependencies
 
@@ -72,23 +73,31 @@ python -m pip install -r requirements.txt
 
 ### Configure the OMDb API key
 
-Obtain a free API key from:
+Obtain an API key from [OMDb API](https://www.omdbapi.com/apikey.aspx).
 
-https://www.omdbapi.com/apikey.aspx
+In **Git Bash**, set the key for the current terminal session:
 
-In Windows Command Prompt, set the key for your current terminal session:
+```bash
+export OMDB_API_KEY="your_api_key_here"
+```
+
+In **Windows Command Prompt**, use:
 
 ```bat
 set OMDB_API_KEY=your_api_key_here
 ```
 
-Replace the placeholder with your own key. Never commit your real API key to version control.
+Replace the placeholder with your own key. Never commit a real API key to version control.
 
-### Create the database schema
+### Initialize the database
+
+Run:
 
 ```bash
 python test_schema.py
 ```
+
+This script creates the database tables using `schema.sql`. Run it before the first ETL execution on a fresh setup.
 
 ### Run the ETL pipeline
 
@@ -96,9 +105,15 @@ python test_schema.py
 python etl.py
 ```
 
-The current script processes five uncached movies per run. Running it again continues with additional movies, subject to API limits.
+The default batch size is five uncached movies. To select a different batch size, use:
 
-## 7. Running the SQL Queries
+```bash
+python etl.py --batch-size 20
+```
+
+Only use a batch size appropriate for your available API quota. Successful and not-found lookups are cached; network failures can be retried in later runs.
+
+## 7. SQL Analytical Queries
 
 The `queries.sql` file contains queries to answer these questions:
 
@@ -107,59 +122,83 @@ The `queries.sql` file contains queries to answer these questions:
 3. Which director has the most movies?
 4. What is the average rating for each release year?
 
-Execute and test the queries with:
+Run the query tests with:
 
 ```bash
 python test_queries.py
 ```
 
-## 8. Validation
+Interpret the results in light of the metadata available in the database. In particular, the director analysis depends on successful OMDb enrichment.
 
-Run the database verification script:
+## 8. Testing and Data Quality
+
+Run the following commands from the project directory:
 
 ```bash
+python test_schema.py
+python test_api.py
+python test_queries.py
+python data_quality.py
 python verify_database.py
 ```
 
-The initial database load was verified to contain:
+The API tests use mocks to test API behavior without making live OMDb requests.
+
+The data-quality script checks for missing identifiers and titles, invalid movie and genre references, and foreign-key violations.
+
+## 9. Validation Results
+
+The initial MovieLens load was verified to contain:
 
 - 9,742 movies
 - 100,836 ratings
 - 19 distinct genres
 - 22,050 movie-genre relationships
 
-OMDb enrichment is currently partial, so director-related analysis should be interpreted accordingly until more metadata has been processed.
+In the latest reported enrichment run, the cache contained 87 lookup records: 61 successful lookups and 26 not-found results.
 
-## 9. Challenges and Solutions
+These are results from a partial enrichment run, not complete OMDb coverage. Director-related analysis should therefore be interpreted as based on the available metadata rather than all movies in the dataset.
+
+## 10. Challenges and Design Decisions
 
 ### Movie title mismatches
 
-Some MovieLens titles do not match OMDb titles exactly. The pipeline removes the year suffix before searching and handles not-found responses without stopping the entire batch.
+Some MovieLens titles do not match OMDb titles exactly. The pipeline removes the year suffix before searching. More advanced title normalization and alternative-title matching are potential improvements.
 
 ### API limits and repeated requests
 
-The pipeline processes small batches and caches lookup outcomes to reduce repeated API calls and support resumable execution.
+The pipeline processes small batches and caches lookup outcomes to reduce repeated requests and support resumable execution.
 
 ### Data integrity
 
-Primary keys, foreign keys, and conflict-handling SQL statements help prevent duplicate records and maintain relationships between movies, genres, and ratings.
+Primary keys, foreign keys, rating constraints, and conflict-handling SQL statements help maintain database consistency.
 
 ### Missing metadata
 
-Some OMDb fields may be unavailable. The pipeline allows optional metadata to remain empty rather than assuming every movie has complete information.
+Some OMDb fields may be unavailable. Optional metadata is stored as `NULL` rather than assuming every movie has complete information.
 
-## 10. Future Improvements
+### Error handling
 
-- Improve title matching using IMDb IDs or alternative-title searches.
-- Add configurable batch sizes, retries with backoff, and request throttling.
-- Add structured logging and more automated tests.
-- Track failed API requests separately from genuine not-found results.
-- Use PostgreSQL for a larger, concurrent production workload.
-- Schedule incremental data updates and monitor data quality.
+The API integration checks for missing API keys, unsuccessful lookups, invalid responses, and request failures. Network failures are left uncached so that they can be retried.
 
-## 11. Project Files
+## 11. Future Improvements
 
-- `etl.py`: Extraction, transformation, loading, and metadata enrichment.
+- Improve title matching with normalized and alternative titles.
+- Add retry policies with backoff and request throttling.
+- Distinguish temporary API failures from permanent not-found results.
+- Improve test coverage for malformed responses and HTTP failures.
+- Consider PostgreSQL for larger workloads requiring concurrent access.
+- Schedule incremental updates and monitor data quality.
+
+## 12. Project Files
+
+- `etl.py`: ETL pipeline and OMDb enrichment.
 - `schema.sql`: Database table definitions.
 - `queries.sql`: Analytical SQL queries.
-- `README.md`: Project overview and execution instructions.
+- `test_schema.py`: Database schema validation and setup.
+- `test_api.py`: Mocked API unit tests.
+- `test_queries.py`: SQL query tests.
+- `data_quality.py`: Data-quality checks.
+- `verify_database.py`: Database row-count verification.
+- `requirements.txt`: Python dependencies.
+- `README.md`: Project documentation.
