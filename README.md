@@ -155,9 +155,9 @@ The initial MovieLens load was verified to contain:
 - 19 distinct genres
 - 22,050 movie-genre relationships
 
-In the latest reported enrichment run, the cache contained 87 lookup records: 61 successful lookups and 26 not-found results.
+In the latest validation run, the database contained 687 cached OMDb lookup outcomes: 450 successful lookups and 237 movies not found by OMDb.
 
-These are results from a partial enrichment run, not complete OMDb coverage. Director-related analysis should therefore be interpreted as based on the available metadata rather than all movies in the dataset.
+These results represent partial enrichment, not complete OMDb coverage. The full MovieLens dataset is loaded, but director, plot, IMDb ID, and box office information may be unavailable for many movies. Director-related analysis should therefore be interpreted based on the metadata available..
 
 ## 10. Challenges and Design Decisions
 
