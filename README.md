@@ -157,7 +157,11 @@ The initial MovieLens load was verified to contain:
 
 In the latest validation run, the database contained 687 cached OMDb lookup outcomes: 450 successful lookups and 237 movies not found by OMDb.
 
+ HEAD
 These results represent partial enrichment, not complete OMDb coverage. The full MovieLens dataset is loaded, but director, plot, IMDb ID, and box office information may be unavailable for many movies. Director-related analysis should therefore be interpreted based on the metadata available..
+
+These results represent partial enrichment, not complete OMDb coverage. The full MovieLens dataset is loaded, but director, plot, IMDb ID, and box office information may be unavailable for many movies. Director-related analysis should therefore be interpreted based on the metadata available.
+4d1649b (update enrichment validation results)
 
 ## 10. Challenges and Design Decisions
 
